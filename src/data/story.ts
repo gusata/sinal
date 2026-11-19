@@ -23,6 +23,7 @@ export interface StoryEntry {
 
 export const ARC_NAMES: Record<number, string> = {
   1: 'Estática',
+  2: 'O Coro',
 };
 
 export const STORY: readonly StoryEntry[] = [
@@ -216,6 +217,161 @@ export const STORY: readonly StoryEntry[] = [
       'O sinal leva onze minutos para voltar. Mandei um bipe. Voltou um bipe.',
       'Mandei dois. Voltaram três.',
       'Não mandei mais nada.',
+    ],
+  },
+
+  // ─── ARCO 2: O CORO ───────────────────────────────────────────────
+  {
+    id: 'd06-partitura',
+    kind: 'log',
+    arc: 2,
+    title: 'Dia 31',
+    requires: [{ kind: 'story', id: 'd05-ultima-pagina' }],
+    lines: [
+      'Imprimi o intervalo entre as sequências e colei na parede.',
+      'Parece uma partitura escrita por alguém que nunca ouviu música, só leu a respeito.',
+      'Vou precisar de uma antena maior.',
+    ],
+  },
+  {
+    id: 't06-primeira-voz',
+    kind: 'transmission',
+    arc: 2,
+    title: 'Duas vozes',
+    requires: [
+      { kind: 'story', id: 'd06-partitura' },
+      { kind: 'antenna', id: 'radiotelescopio', count: 1 },
+    ],
+    cost: 2e9,
+    duration: 300,
+    lines: [
+      'Separei o intervalo em camadas. Tem uma voz grave, constante, como um órgão.',
+      'Por cima dela, outra, mais rápida, que nunca repete a mesma frase.',
+      'Não são duas fontes. É uma fonte só, cantando em duas vozes.',
+    ],
+  },
+  {
+    id: 'd07-sono',
+    kind: 'log',
+    arc: 2,
+    title: 'Dia 38',
+    requires: [
+      { kind: 'story', id: 't06-primeira-voz' },
+      { kind: 'totalData', amount: 30e9 },
+    ],
+    lines: [
+      'Não durmo direito há uma semana. Deixo o Coro tocando baixinho no quarto.',
+      'O silêncio agora me incomoda mais que a estática.',
+    ],
+  },
+  {
+    id: 't07-terceira-voz',
+    kind: 'transmission',
+    arc: 2,
+    title: 'A terceira voz',
+    requires: [
+      { kind: 'story', id: 'd07-sono' },
+      { kind: 'decoder', upgrade: 'capacity', level: 11 },
+    ],
+    cost: 10e9,
+    duration: 600,
+    lines: [
+      'Apareceu uma terceira voz. Ela só canta quando eu estou ouvindo.',
+      'Testei: tirei os fones por uma hora. O registro dessa hora tem só duas vozes.',
+      'Coincidência. Tem que ser.',
+    ],
+  },
+  {
+    id: 'd08-pautas',
+    kind: 'log',
+    arc: 2,
+    title: 'Dia 45',
+    requires: [{ kind: 'story', id: 't07-terceira-voz' }],
+    lines: [
+      'Voltei ao caderno. No verso das páginas, a lápis, tem pautas desenhadas.',
+      'Ele também estava transcrevendo. Parou na terceira voz.',
+    ],
+  },
+  {
+    id: 't08-cinco-notas',
+    kind: 'transmission',
+    arc: 2,
+    title: 'Cinco notas',
+    requires: [
+      { kind: 'story', id: 'd08-pautas' },
+      { kind: 'antenna', id: 'satelites', count: 1 },
+    ],
+    cost: 60e9,
+    duration: 900,
+    lines: [
+      'Toquei de volta, num teclado velho da sala, as quatro primeiras notas da voz grave.',
+      'Nada mudou por dois dias.',
+      'No terceiro, a voz grave tocou cinco notas. A quinta era nova.',
+    ],
+  },
+  {
+    id: 'd09-tecnico',
+    kind: 'log',
+    arc: 2,
+    title: 'Dia 52',
+    requires: [
+      { kind: 'story', id: 't08-cinco-notas' },
+      { kind: 'totalData', amount: 250e9 },
+    ],
+    lines: [
+      'A central mandou um técnico. Ele mediu tudo, olhou a parede cheia de pautas e foi embora quase sem falar.',
+      'No relatório escreveu: "operador em boas condições".',
+      'Embaixo, à mão: "não responda".',
+    ],
+  },
+  {
+    id: 't09-quarta-voz',
+    kind: 'transmission',
+    arc: 2,
+    title: 'A quarta voz',
+    requires: [
+      { kind: 'story', id: 'd09-tecnico' },
+      { kind: 'decoder', upgrade: 'efficiency', level: 9 },
+    ],
+    cost: 150e9,
+    duration: 1200,
+    lines: [
+      'Uma quarta voz. Mais aguda, mais perto.',
+      'Ela canta as notas que eu toquei. Na mesma ordem, no mesmo tom.',
+      'Com o mesmo erro que eu cometi na terceira.',
+    ],
+  },
+  {
+    id: 't10-coro',
+    kind: 'transmission',
+    arc: 2,
+    title: 'O Coro',
+    requires: [
+      { kind: 'story', id: 't09-quarta-voz' },
+      { kind: 'source', id: 'harmonico' },
+    ],
+    cost: 300e9,
+    duration: 1800,
+    lines: [
+      'Quando as quatro vozes cantam juntas, a estática some. Não abaixa: some.',
+      'O medidor marca zero absoluto de ruído por onze segundos.',
+      'Igual à frequência que o operador anterior circulou e riscou.',
+    ],
+  },
+  {
+    id: 'd10-fim-arco2',
+    kind: 'log',
+    arc: 2,
+    title: 'Fim do turno',
+    requires: [
+      { kind: 'story', id: 't10-coro' },
+      { kind: 'totalData', amount: 1.2e12 },
+    ],
+    lines: [
+      'Entendi por que ele foi embora. Não foi medo.',
+      'O Coro não está pedindo resposta. Está ensinando a música, e cada operador que aprende vira mais uma voz.',
+      'Acho que está na hora de passar o turno.',
+      '[ fim do arco 2 · o Silêncio está disponível ]',
     ],
   },
 ];

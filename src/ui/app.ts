@@ -1,9 +1,11 @@
-import type { Game, OfflineReport } from '../core/game';
+import type { Game, GameEvent, OfflineReport } from '../core/game';
 import { formatBytes, formatDuration, formatHz } from '../core/format';
 import type { GameState } from '../core/state';
 import { getSource } from '../data/spectrum';
 import { STORY, getStory } from '../data/story';
+import { sound } from '../platform/audio';
 import { hapticLight, hapticMedium } from '../platform/haptics';
+import { ensureNotificationPermission } from '../platform/notifications';
 import { h, setText, setVisible, type Panel } from './dom';
 import { showModal } from './modal';
 import { Oscilloscope } from './oscilloscope';
@@ -12,6 +14,7 @@ import { createAntennasPanel } from './panels/antennas';
 import { createDecoderPanel } from './panels/decoder';
 import { createJournalPanel } from './panels/journal';
 import { createSettingsPanel } from './panels/settings';
+import { createSilencePanel } from './panels/silence';
 import { createSpectrumPanel } from './panels/spectrum';
 
 export interface AppCallbacks {
@@ -21,13 +24,14 @@ export interface AppCallbacks {
   onReset(): void;
 }
 
-type TabId = 'antennas' | 'decoder' | 'spectrum' | 'journal' | 'settings';
+type TabId = 'antennas' | 'decoder' | 'spectrum' | 'journal' | 'silence' | 'settings';
 
 const TABS: { id: TabId; icon: string; label: string }[] = [
   { id: 'antennas', icon: '⌁', label: 'Antenas' },
   { id: 'decoder', icon: '▤', label: 'Equip.' },
   { id: 'spectrum', icon: '|‖|', label: 'Espectro' },
   { id: 'journal', icon: '✎', label: 'Diário' },
+  { id: 'silence', icon: '◌', label: 'Silêncio' },
   { id: 'settings', icon: '⚙', label: 'Config' },
 ];
 
@@ -37,6 +41,7 @@ export class App {
   private panels: Record<TabId, Panel>;
   private current: TabId = 'antennas';
   private tabButtons = new Map<TabId, { btn: HTMLButtonElement; badge: HTMLElement }>();
+  private nav = h('nav', { class: 'tabs' });
   private panelHost = h('main', { class: 'panels' });
   private logEl = h('div', { class: 'log' });
   private scope: Oscilloscope;
@@ -61,6 +66,14 @@ export class App {
       decoder: createDecoderPanel(game, onBuy),
       spectrum: createSpectrumPanel(game, onBuy),
       journal: createJournalPanel(game, onBuy),
+      silence: createSilencePanel(game, {
+        onBuy,
+        onSilence: (clarity, previous, operator) => {
+          cb.requestSave();
+          this.showSilenceModal(clarity, previous, operator);
+          this.showTab('antennas');
+        },
+      }),
       settings: createSettingsPanel(game, {
         onImport: cb.onImport,
         onReset: cb.onReset,
@@ -79,9 +92,10 @@ export class App {
     this.scopeEl = h('div', { class: 'scope' }, canvas, this.scopeSat, this.scopeHint);
     this.scopeEl.addEventListener('pointerdown', (e) => this.handleTap(e));
 
-    const nav = h('nav', { class: 'tabs' });
+    const nav = this.nav;
     for (const tab of TABS) {
       const badge = h('span', { class: 'badge' });
+      badge.hidden = true; // só aparece quando alguma aba pede atenção
       const btn = h(
         'button',
         { class: 'tab', attrs: { 'data-tab': tab.id }, onClick: () => this.showTab(tab.id) },
@@ -120,6 +134,9 @@ export class App {
 
     this.tutorial = new Tutorial(root, game, () => cb.requestSave());
     game.onLog((msg) => this.pushLog(msg));
+    game.onEvent((e) => this.handleEvent(e));
+    // Áudio só pode começar depois de um gesto do usuário.
+    root.addEventListener('pointerdown', () => sound.unlock(), { capture: true });
     this.applySettings();
     this.showTab('antennas');
   }
@@ -144,6 +161,14 @@ export class App {
     this.hudSignal.classList.toggle('sat', r.saturated);
     setVisible(this.scopeSat, r.saturated);
     setVisible(this.scopeHint, s.stats.taps < 5);
+
+    // A aba Silêncio só aparece quando liberada.
+    const silenceOpen = this.game.isSilenceUnlocked();
+    const silenceTab = this.tabButtons.get('silence')!;
+    if (silenceTab.btn.hidden === silenceOpen) silenceTab.btn.hidden = !silenceOpen;
+    const columns = `repeat(${silenceOpen ? TABS.length : TABS.length - 1}, 1fr)`;
+    if (this.nav.style.gridTemplateColumns !== columns) this.nav.style.gridTemplateColumns = columns;
+    this.setBadge('silence', silenceOpen && this.game.canSilence() && s.prestige.silences === 0);
 
     const journalBadge =
       s.story.unread.length > 0 || (!s.story.decoding && this.game.availableTransmissions().length > 0);
@@ -173,6 +198,54 @@ export class App {
       body.push(src ? `A varredura encontrou uma fonte: ${src.name}.` : 'A varredura terminou. Nada novo.');
     }
     showModal('Enquanto você estava fora…', body);
+  }
+
+  private handleEvent(e: GameEvent): void {
+    const haptics = this.game.state.settings.haptics;
+    switch (e.type) {
+      case 'buy':
+        sound.play('buy');
+        break;
+      case 'decoded':
+        sound.play('decoded');
+        hapticMedium(haptics);
+        break;
+      case 'journal':
+        sound.play('journal');
+        break;
+      case 'scan':
+        sound.play(e.found ? 'scanFound' : 'scanEmpty');
+        if (e.found) hapticMedium(haptics);
+        break;
+      case 'peak':
+        sound.play('peak');
+        break;
+      case 'peakClaim':
+        sound.play('peakClaim');
+        break;
+      case 'silence':
+        sound.play('silence');
+        break;
+      case 'decodeStart':
+      case 'scanStart':
+        // Momento certo para pedir permissão: o jogador acabou de começar algo demorado.
+        void ensureNotificationPermission(this.game.state.settings.notifications);
+        break;
+    }
+  }
+
+  private showSilenceModal(clarity: number, previous: string, operator: string): void {
+    const p = this.game.state.prestige;
+    showModal(
+      'Fim do turno',
+      [
+        previous === 'você' ? 'Você deixa a estação.' : `${previous} deixa a estação.`,
+        `+${clarity} de Clareza. Agora são ${p.clarity} (+${Math.round(p.clarity * 2)}% de dados).`,
+        `${operator} assume o turno. Na gaveta, encontra o caderno de quem veio antes, e o diário inteiro.`,
+        h('p', { class: 'muted small', text: 'As antenas foram desmontadas. O céu continua lá.' }),
+      ],
+      'Começar o turno',
+    );
   }
 
   private showTab(id: TabId): void {
@@ -206,6 +279,7 @@ export class App {
     }
 
     const gained = this.game.tap();
+    sound.play('tap');
     hapticLight(this.game.state.settings.haptics);
     this.spawnFloater(x, y, `+${formatBytes(gained)}`, false);
   }
@@ -225,6 +299,8 @@ export class App {
   }
 
   private applySettings(): void {
-    document.body.classList.toggle('crt', this.game.state.settings.crt);
+    const st = this.game.state.settings;
+    document.body.classList.toggle('crt', st.crt);
+    sound.configure(st.sound, st.ambient);
   }
 }

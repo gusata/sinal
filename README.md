@@ -13,6 +13,7 @@ npm run dev          # roda no navegador (também acessível pelo celular na mes
 npm test             # testes da lógica (vitest)
 npm run typecheck    # checagem de tipos
 npm run build        # gera dist/
+npm run sim          # simulação de ritmo (bots jogando com relógio virtual)
 
 npm run android      # build + sync + abre no Android Studio
 npm run ios          # build + sync + abre no Xcode (só no macOS)
@@ -38,9 +39,11 @@ src/
     antennas.ts    lista de antenas (custo, produção, desbloqueio)
     decoder.ts     upgrades do decodificador
     upgrades.ts    melhorias da estação (toque, picos, offline)
+    prestige.ts    Silêncio (prestígio): Clareza, árvore, operadores
+    tutorial.ts    dicas contextuais + glossário "Como funciona"
     spectrum.ts    varreduras e fontes do Espectro
     story.ts       diário + transmissões (a história)
-  platform/      Integração Capacitor (save nativo, vibração)
+  platform/      Integração Capacitor (save nativo, vibração, notificações) e áudio procedural
   ui/            Interface (DOM puro + canvas do osciloscópio)
     panels/        uma aba por arquivo
   styles/        CSS (tokens no topo de main.css)

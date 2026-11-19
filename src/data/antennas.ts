@@ -46,6 +46,22 @@ export const ANTENNAS: readonly AntennaDef[] = [
     baseSignal: 45,
     requires: [{ kind: 'story', id: 't04-sequencia' }],
   },
+  {
+    id: 'radiotelescopio',
+    name: 'Radiotelescópio',
+    desc: 'Um prato de vinte metros que ninguém lembra de ter encomendado.',
+    baseCost: 600e6,
+    baseSignal: 300,
+    requires: [{ kind: 'story', id: 'd05-ultima-pagina' }],
+  },
+  {
+    id: 'satelites',
+    name: 'Rede de satélites',
+    desc: 'Satélites antigos, reapontados um a um para o mesmo ponto do céu.',
+    baseCost: 9e9,
+    baseSignal: 2000,
+    requires: [{ kind: 'story', id: 't07-terceira-voz' }],
+  },
 ];
 
 export function getAntenna(id: string): AntennaDef | undefined {

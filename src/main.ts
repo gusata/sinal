@@ -7,6 +7,10 @@ import { Game } from './core/game';
 import { OFFLINE_REPORT_MIN_S, type OfflineResult } from './core/offline';
 import { deserialize, serialize } from './core/save';
 import { createInitialState, type GameState } from './core/state';
+import { App as CapApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
+import { sound } from './platform/audio';
+import { cancelAwayNotifications, scheduleAwayNotifications } from './platform/notifications';
 import { clearSave, loadSave, writeSave } from './platform/storage';
 import { App } from './ui/app';
 
@@ -64,16 +68,35 @@ async function boot(): Promise<void> {
 
   // Com o app em segundo plano não avançamos o jogo: ao voltar,
   // o intervalo inteiro é tratado como progresso offline.
+  let background = false;
+
+  const goBackground = () => {
+    if (background) return;
+    background = true;
+    void save();
+    sound.suspend();
+    void scheduleAwayNotifications(game);
+  };
+
+  const goForeground = () => {
+    if (!background) return;
+    background = false;
+    void cancelAwayNotifications();
+    sound.resume();
+    step();
+  };
+
   window.setInterval(() => {
-    if (!document.hidden) step();
+    if (!background && !document.hidden) step();
   }, TICK_MS);
   window.setInterval(() => void save(), AUTOSAVE_MS);
 
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) void save();
-    else step();
-  });
+  document.addEventListener('visibilitychange', () => (document.hidden ? goBackground() : goForeground()));
   window.addEventListener('pagehide', () => void save());
+  if (Capacitor.isNativePlatform()) {
+    void CapApp.addListener('appStateChange', ({ isActive }) => (isActive ? goForeground() : goBackground()));
+  }
+  void cancelAwayNotifications();
 }
 
 function shouldReport(r: OfflineResult & { storyUnlocked: string[] }): boolean {

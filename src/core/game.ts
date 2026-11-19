@@ -25,6 +25,21 @@ import {
   type UpgradeDef,
   type UpgradeId,
 } from '../data/upgrades';
+import {
+  CLARITY_BONUS,
+  OPERATOR_NAMES,
+  SILENCE_REQUIRES,
+  afinacaoPeakMult,
+  antecessorDecodeMult,
+  clarityForRun,
+  ecoTapMult,
+  getPrestigeNode,
+  herancaStart,
+  memoriaOfflineBonus,
+  pacienciaScanMult,
+  type PrestigeNodeDef,
+  type PrestigeNodeId,
+} from '../data/prestige';
 import { costOfN, maxAffordable, milestoneMultiplier, nextMilestone } from './economy';
 import { computeOffline, OFFLINE_THRESHOLD_S, type OfflineResult } from './offline';
 import { allMet } from './requirements';
@@ -94,6 +109,24 @@ const BUNDLE_SECONDS = 90;
 const BUNDLE_MIN_TAPS = 30;
 
 type LogListener = (message: string) => void;
+
+/** Acontecimentos que a UI/plataforma podem querer sinalizar (som, vibração, notificação). */
+export type GameEvent =
+  | { type: 'buy' }
+  | { type: 'decodeStart' }
+  | { type: 'decoded'; title: string }
+  | { type: 'scanStart' }
+  | { type: 'journal' }
+  | { type: 'scan'; found: boolean }
+  | { type: 'peak' }
+  | { type: 'peakClaim' }
+  | { type: 'silence'; clarity: number; operator: string };
+type EventListener = (event: GameEvent) => void;
+
+export interface SilenceResult {
+  clarity: number;
+  operator: string;
+}
 type Rng = () => number;
 /** Relógio em ms. No jogo é Date.now; na simulação, um relógio virtual. */
 export type Clock = () => number;
@@ -104,6 +137,7 @@ export type Clock = () => number;
  */
 export class Game {
   private logListeners: LogListener[] = [];
+  private eventListeners: EventListener[] = [];
   peak: Peak | null = null;
   /** Quando o próximo pico pode aparecer (timestamp ms). */
   nextPeakAt: number;
@@ -126,6 +160,14 @@ export class Game {
     for (const cb of this.logListeners) cb(message);
   }
 
+  onEvent(cb: EventListener): void {
+    this.eventListeners.push(cb);
+  }
+
+  private emit(event: GameEvent): void {
+    for (const cb of this.eventListeners) cb(event);
+  }
+
   // ─── Taxas ────────────────────────────────────────────────────────
 
   antennaSignal(def: AntennaDef): number {
@@ -140,6 +182,16 @@ export class Game {
     return 1 + bonus;
   }
 
+  /** Multiplicador de dados vindo da Clareza (prestígio). */
+  clarityMultiplier(): number {
+    return 1 + CLARITY_BONUS * this.state.prestige.clarity;
+  }
+
+  /** Bytes por pulso de sinal: eficiência do decodificador × Clareza. */
+  bytesPerPulse(efficiencyLevel = this.state.decoder.efficiencyLevel): number {
+    return bytesPerSignal(efficiencyLevel) * this.clarityMultiplier();
+  }
+
   boostMultiplier(now = this.clock()): number {
     const b = this.state.boost;
     return b && now < b.endsAt ? b.mult : 1;
@@ -149,7 +201,7 @@ export class Game {
     const signal = ANTENNAS.reduce((sum, def) => sum + this.antennaSignal(def), 0);
     const capacity = decoderCapacity(this.state.decoder.capacityLevel);
     const processed = Math.min(signal, capacity);
-    const bps = bytesPerSignal(this.state.decoder.efficiencyLevel);
+    const bps = this.bytesPerPulse();
     const boost = this.boostMultiplier(now);
     const baseDataPerSec = processed * bps;
     return {
@@ -178,12 +230,7 @@ export class Game {
     if (elapsed > OFFLINE_THRESHOLD_S) {
       // Offline não conta o boost: ele é para quem está olhando.
       const rates = this.rates(now);
-      const result = computeOffline(
-        rates.baseDataPerSec,
-        elapsed,
-        offlineEfficiency(this.upgradeLevel('gravador')),
-        offlineCapS(this.upgradeLevel('turno')),
-      );
+      const result = computeOffline(rates.baseDataPerSec, elapsed, this.offlineEfficiency(), this.offlineCapSeconds());
       this.gain(result.gained);
       this.peak = null;
       this.nextPeakAt = now + PEAK_FIRST_DELAY_S * 1000;
@@ -198,6 +245,16 @@ export class Game {
     this.updateSpectrum(now);
     this.updateStory(now);
     return null;
+  }
+
+  /** Fração da produção que rende com o app fechado. */
+  offlineEfficiency(): number {
+    return Math.min(1, offlineEfficiency(this.upgradeLevel('gravador')) + memoriaOfflineBonus(this.nodeLevel('memoria')));
+  }
+
+  /** Por quanto tempo (s) o offline continua rendendo. */
+  offlineCapSeconds(): number {
+    return offlineCapS(this.upgradeLevel('turno'));
   }
 
   private gain(bytes: number): void {
@@ -215,7 +272,7 @@ export class Game {
   }
 
   tapBytes(): number {
-    return this.tapSignal() * bytesPerSignal(this.state.decoder.efficiencyLevel);
+    return this.tapSignal() * this.bytesPerPulse() * ecoTapMult(this.nodeLevel('eco'));
   }
 
   tap(): number {
@@ -235,8 +292,11 @@ export class Game {
 
     const windowMs = peakWindowS(this.upgradeLevel('reflexo')) * 1000;
     this.peak = { x: 0.15 + this.rng() * 0.7, spawnedAt: now, expiresAt: now + windowMs };
-    const interval = PEAK_MIN_INTERVAL_S + this.rng() * (PEAK_MAX_INTERVAL_S - PEAK_MIN_INTERVAL_S);
+    const interval =
+      (PEAK_MIN_INTERVAL_S + this.rng() * (PEAK_MAX_INTERVAL_S - PEAK_MIN_INTERVAL_S)) *
+      afinacaoPeakMult(this.nodeLevel('afinacao'));
     this.nextPeakAt = now + windowMs + interval * 1000;
+    this.emit({ type: 'peak' });
   }
 
   /** Tenta pegar o pico com um toque em `xFrac` (0..1). Devolve a recompensa ou null. */
@@ -245,6 +305,7 @@ export class Game {
     if (!peak || now >= peak.expiresAt || Math.abs(xFrac - peak.x) > PEAK_HIT_RADIUS) return null;
     this.peak = null;
     this.state.stats.peaks++;
+    this.emit({ type: 'peakClaim' });
 
     // Começo do jogo: produção baixa, então o boost valeria pouco. Dá dados direto.
     const useBoost = this.rates(now).baseDataPerSec * 5 > this.tapBytes() && this.rng() < 0.5;
@@ -289,6 +350,7 @@ export class Game {
     if (milestoneMultiplier(before + quote.amount) > milestoneMultiplier(before)) {
       this.log(`${def.name}: produção dobrada.`);
     }
+    this.emit({ type: 'buy' });
     this.updateStory(this.clock());
     return true;
   }
@@ -322,7 +384,7 @@ export class Game {
       const processed = Math.min(r.signal, decoderCapacity(this.state.decoder.capacityLevel + 1));
       return (processed - r.processed) * r.bytesPerSignal;
     }
-    return r.processed * (bytesPerSignal(this.state.decoder.efficiencyLevel + 1) - r.bytesPerSignal);
+    return r.processed * (this.bytesPerPulse(this.state.decoder.efficiencyLevel + 1) - r.bytesPerSignal);
   }
 
   decoderCost(kind: DecoderUpgrade): number {
@@ -335,6 +397,7 @@ export class Game {
     this.state.data -= cost;
     if (kind === 'capacity') this.state.decoder.capacityLevel++;
     else this.state.decoder.efficiencyLevel++;
+    this.emit({ type: 'buy' });
     this.updateStory(this.clock());
     return true;
   }
@@ -362,6 +425,7 @@ export class Game {
     if (cost === null || this.state.data < cost) return false;
     this.state.data -= cost;
     this.state.upgrades[id] = this.upgradeLevel(id) + 1;
+    this.emit({ type: 'buy' });
     return true;
   }
 
@@ -380,7 +444,9 @@ export class Game {
     if (!def || !this.isSpectrumUnlocked() || this.state.spectrum.scan) return false;
     if (!allMet(def.requires, this.state) || this.state.data < def.cost) return false;
     this.state.data -= def.cost;
-    this.state.spectrum.scan = { depth, startedAt: now, endsAt: now + def.duration * 1000 };
+    const duration = def.duration * pacienciaScanMult(this.nodeLevel('paciencia'));
+    this.state.spectrum.scan = { depth, startedAt: now, endsAt: now + duration * 1000 };
+    this.emit({ type: 'scanStart' });
     this.log(`Varrendo o céu (${def.name.toLowerCase()})…`);
     return true;
   }
@@ -418,9 +484,11 @@ export class Game {
       const text = EMPTY_SCAN_TEXTS[Math.floor(this.rng() * EMPTY_SCAN_TEXTS.length)] ?? 'Só ruído.';
       result = { sourceId: null, text, at: now };
       this.log('> Varredura concluída: nada novo.');
+      this.emit({ type: 'scan', found: false });
     } else {
-      // Fontes da mesma profundidade da varredura têm o dobro de chance.
-      const weights = pool.map((s) => (s.depth === job.depth ? 2 : 1));
+      // Fontes da mesma profundidade da varredura têm o dobro de chance, e as artificiais
+      // (que liberam história) o triplo: a história não deve depender demais de sorte.
+      const weights = pool.map((s) => (s.depth === job.depth ? 2 : 1) * (s.kind === 'artificial' ? 3 : 1));
       let roll = this.rng() * weights.reduce((a, b) => a + b, 0);
       let source = pool[pool.length - 1]!;
       for (let i = 0; i < pool.length; i++) {
@@ -433,12 +501,93 @@ export class Game {
       sp.found.push(source.id);
       result = { sourceId: source.id, text: source.lines.join(' '), at: now };
       this.log(`> Nova fonte: ${source.name}.`);
+      this.emit({ type: 'scan', found: true });
     }
 
     sp.last = result;
     sp.unseen = true;
     this.updateStory(now); // fontes artificiais liberam transmissões
     return result;
+  }
+
+  // ─── Silêncio (prestígio) ─────────────────────────────────────────
+
+  nodeLevel(id: PrestigeNodeId): number {
+    return this.state.prestige.nodes[id] ?? 0;
+  }
+
+  availableClarity(): number {
+    return this.state.prestige.clarity - this.state.prestige.spent;
+  }
+
+  /** Custo do próximo nível (em Clareza), ou null se está no máximo. */
+  nodeCost(def: PrestigeNodeDef): number | null {
+    const level = this.nodeLevel(def.id);
+    return level >= def.maxLevel ? null : def.baseCost * (level + 1);
+  }
+
+  buyNode(id: PrestigeNodeId): boolean {
+    const def = getPrestigeNode(id);
+    if (!def) return false;
+    const cost = this.nodeCost(def);
+    if (cost === null || this.availableClarity() < cost) return false;
+    this.state.prestige.spent += cost;
+    this.state.prestige.nodes[id] = this.nodeLevel(id) + 1;
+    this.emit({ type: 'buy' });
+    return true;
+  }
+
+  isSilenceUnlocked(): boolean {
+    return this.state.prestige.silences > 0 || allMet(SILENCE_REQUIRES, this.state);
+  }
+
+  /** Clareza que encerrar o turno agora daria. */
+  clarityGain(): number {
+    return clarityForRun(this.state.totalData);
+  }
+
+  canSilence(): boolean {
+    return this.isSilenceUnlocked() && this.clarityGain() >= 1;
+  }
+
+  /** O próximo operador a assumir a estação. */
+  nextOperator(): string {
+    const n = this.state.prestige.silences;
+    return OPERATOR_NAMES[n % OPERATOR_NAMES.length]!;
+  }
+
+  /**
+   * Encerra o turno: reinicia a economia e dá Clareza.
+   * Ficam: Diário, fontes do Espectro, Clareza, árvore, estatísticas e configurações.
+   */
+  silence(now = this.clock()): SilenceResult | null {
+    if (!this.canSilence()) return null;
+    const s = this.state;
+    const clarity = this.clarityGain();
+    const operator = this.nextOperator();
+
+    s.prestige.clarity += clarity;
+    s.prestige.silences++;
+    s.prestige.operators.push(operator);
+
+    const start = herancaStart(this.nodeLevel('heranca'));
+    s.data = 0;
+    s.totalData = 0;
+    s.antennas = {};
+    if (start.fio > 0) s.antennas.fio = start.fio;
+    if (start.yagi > 0) s.antennas.yagi = start.yagi;
+    s.decoder = { capacityLevel: 0, efficiencyLevel: 0 };
+    s.upgrades = {};
+    s.boost = null;
+    s.story.decoding = null;
+    s.spectrum.scan = null;
+    this.peak = null;
+    this.nextPeakAt = now + PEAK_FIRST_DELAY_S * 1000;
+    s.lastSeen = now;
+
+    this.log(`> Fim do turno. ${operator} assume a estação.`);
+    this.emit({ type: 'silence', clarity, operator });
+    return { clarity, operator };
   }
 
   // ─── História ─────────────────────────────────────────────────────
@@ -460,7 +609,9 @@ export class Game {
     if (this.state.data < cost) return false;
 
     this.state.data -= cost;
-    this.state.story.decoding = { id, startedAt: now, endsAt: now + (entry.duration ?? 0) * 1000 };
+    const duration = (entry.duration ?? 0) * antecessorDecodeMult(this.nodeLevel('antecessor'));
+    this.state.story.decoding = { id, startedAt: now, endsAt: now + duration * 1000 };
+    this.emit({ type: 'decodeStart' });
     this.log(`Decifrando "${entry.title}"…`);
     return true;
   }
@@ -493,6 +644,7 @@ export class Game {
       if (entry && !story.done.includes(entry.id)) {
         complete(entry);
         this.log(`> Transmissão decifrada: "${entry.title}"`);
+        this.emit({ type: 'decoded', title: entry.title });
       }
     }
 
@@ -505,6 +657,7 @@ export class Game {
         if (!allMet(entry.requires, this.state)) continue;
         complete(entry);
         this.log('> Nova entrada no diário.');
+        this.emit({ type: 'journal' });
         changed = true;
       }
     }

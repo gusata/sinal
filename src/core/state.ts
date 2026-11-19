@@ -68,6 +68,18 @@ export interface GameState {
     /** Dicas já vistas (ids de data/tutorial.ts). */
     done: string[];
   };
+  /** Prestígio ("Silêncio"). Sobrevive aos resets. */
+  prestige: {
+    /** Clareza ganha no total (cada ponto = +2% de dados). */
+    clarity: number;
+    /** Clareza já gasta na árvore. */
+    spent: number;
+    silences: number;
+    /** Nível de cada nó da árvore (data/prestige.ts). */
+    nodes: Record<string, number>;
+    /** Operadores que já passaram pela estação, em ordem. */
+    operators: string[];
+  };
   stats: {
     taps: number;
     peaks: number;
@@ -78,6 +90,9 @@ export interface GameState {
   settings: {
     haptics: boolean;
     crt: boolean;
+    sound: boolean;
+    ambient: boolean;
+    notifications: boolean;
     buyMode: BuyMode;
   };
   /** Último instante processado pelo jogo (para progresso offline). */
@@ -97,8 +112,9 @@ export function createInitialState(now = Date.now()): GameState {
     story: { done: [], unread: [], decoding: null },
     spectrum: { scan: null, found: [], scans: 0, last: null, unseen: false },
     tutorial: { done: [] },
+    prestige: { clarity: 0, spent: 0, silences: 0, nodes: {}, operators: [] },
     stats: { taps: 0, peaks: 0, createdAt: now, playTime: 0 },
-    settings: { haptics: true, crt: true, buyMode: 1 },
+    settings: { haptics: true, crt: true, sound: true, ambient: true, notifications: true, buyMode: 1 },
     lastSeen: now,
   };
 }

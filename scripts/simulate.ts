@@ -143,6 +143,7 @@ const MILESTONES: Milestone[] = [
   { key: 'espectro', label: 'Espectro liberado' },
   { key: 'fontes:natural', label: 'Todas as fontes naturais' },
   { key: 'fim-arco-1', label: 'FIM DO ARCO 1' },
+  { key: 'fim-arco-2', label: 'FIM DO ARCO 2 (Silêncio)' },
   { key: 'tudo', label: '100% do conteúdo' },
 ];
 
@@ -313,11 +314,14 @@ function run(profile: Profile, seed: number, stopAt: string): RunResult {
       if (next && game.startDecoding(next.id, now)) progress(`decifra "${next.title}"`);
     }
 
-    // Varrer: a mais profunda que ainda tenha fonte ao alcance e custe até metade do saldo
+    // Varrer: a que encontra mais fontes por hora (fontes ao alcance × chance ÷ duração),
+    // custando até metade do saldo. É o que a tela mostra ("N fontes ao alcance").
     if (game.isSpectrumUnlocked() && !state.spectrum.scan) {
+      const findsPerHour = (s: (typeof SCANS)[number]) =>
+        (game.sourcePool(s.depth).length * (1 - s.emptyChance)) / s.duration;
       const scan = [...game.availableScans()]
-        .sort((a, b) => b.depth - a.depth)
-        .find((s) => game.sourcePool(s.depth).length > 0 && s.cost <= state.data * 0.5);
+        .filter((s) => game.sourcePool(s.depth).length > 0 && s.cost <= state.data * 0.5)
+        .sort((a, b) => findsPerHour(b) - findsPerHour(a))[0];
       if (scan && game.startScan(scan.depth, now)) progress(`inicia ${scan.name.toLowerCase()}`);
     }
 
@@ -377,6 +381,7 @@ function run(profile: Profile, seed: number, stopAt: string): RunResult {
       record('fontes:natural');
     }
     if (state.story.done.includes('d05-ultima-pagina')) record('fim-arco-1', '■ FIM DO ARCO 1');
+    if (state.story.done.includes('d10-fim-arco2')) record('fim-arco-2', '■ FIM DO ARCO 2');
     if (STORY.every((e) => state.story.done.includes(e.id)) && SOURCES.every((s) => state.spectrum.found.includes(s.id))) {
       record('tudo', '■ 100% do conteúdo');
     }
@@ -441,7 +446,7 @@ function report(profile: Profile, results: RunResult[], detail: boolean) {
     const cal = median(hits.map((h) => h.calendar));
     const onl = median(hits.map((h) => h.online));
     const reached = hits.length === n ? '' : `${hits.length}/${n}`;
-    const strong = m.key === 'fim-arco-1' || m.key === 'tudo';
+    const strong = m.key.startsWith('fim-arco') || m.key === 'tudo';
     const line = ` ${pad(m.label, 36)}${padLeft(fmtTime(cal), 12)}${padLeft(fmtTime(onl), 17)}${padLeft(reached, 11)}`;
     if (strong) console.log(' ' + '─'.repeat(76));
     console.log(line);

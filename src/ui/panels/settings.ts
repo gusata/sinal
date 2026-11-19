@@ -28,6 +28,28 @@ export function createSettingsPanel(game: Game, actions: SettingsActions): Panel
     },
   });
 
+  const soundBtn = h('button', {
+    class: 'btn toggle',
+    onClick: () => {
+      game.state.settings.sound = !game.state.settings.sound;
+      actions.onSettingsChange();
+    },
+  });
+  const ambientBtn = h('button', {
+    class: 'btn toggle',
+    onClick: () => {
+      game.state.settings.ambient = !game.state.settings.ambient;
+      actions.onSettingsChange();
+    },
+  });
+  const notifBtn = h('button', {
+    class: 'btn toggle',
+    onClick: () => {
+      game.state.settings.notifications = !game.state.settings.notifications;
+      actions.onSettingsChange();
+    },
+  });
+
   // ─── Save ───
   const saveBox = h('textarea', { attrs: { rows: '4', spellcheck: 'false', placeholder: 'Cole aqui um código de save…' } });
   const saveMsg = h('div', { class: 'row-meta' });
@@ -111,7 +133,11 @@ export function createSettingsPanel(game: Game, actions: SettingsActions): Panel
     h('div', { class: 'btn-row' }, tipsBtn),
     tipsMsg,
     h('div', { class: 'section-title', text: 'Preferências' }),
-    h('div', { class: 'btn-row' }, hapticsBtn, crtBtn),
+    h('div', { class: 'btn-row' }, soundBtn, ambientBtn, hapticsBtn, crtBtn, notifBtn),
+    h('div', {
+      class: 'row-meta',
+      text: 'Notificações só no app instalado: avisam quando uma decifração ou varredura termina, ou quando o gravador para.',
+    }),
     h('div', { class: 'section-title', text: 'Save' }),
     saveBox,
     h('div', { class: 'btn-row' }, exportBtn, importBtn),
@@ -129,6 +155,9 @@ export function createSettingsPanel(game: Game, actions: SettingsActions): Panel
       const s = game.state;
       setText(hapticsBtn, `[${s.settings.haptics ? 'x' : ' '}] Vibração`);
       setText(crtBtn, `[${s.settings.crt ? 'x' : ' '}] Efeito CRT`);
+      setText(soundBtn, `[${s.settings.sound ? 'x' : ' '}] Som`);
+      setText(ambientBtn, `[${s.settings.ambient ? 'x' : ' '}] Estática ambiente`);
+      setText(notifBtn, `[${s.settings.notifications ? 'x' : ' '}] Notificações`);
       setText(
         stats,
         [
@@ -137,6 +166,7 @@ export function createSettingsPanel(game: Game, actions: SettingsActions): Panel
           `Toques:              ${s.stats.taps}`,
           `Picos captados:      ${s.stats.peaks}`,
           `Fontes catalogadas:  ${s.spectrum.found.length}`,
+          `Turnos encerrados:   ${s.prestige.silences}`,
           `Tempo de escuta:     ${formatDuration(s.stats.playTime)}`,
         ].join('\n'),
       );

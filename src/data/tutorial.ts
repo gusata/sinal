@@ -123,6 +123,17 @@ export const TUTORIAL: readonly TutorialStep[] = [
     target: '[data-tab="spectrum"]',
   },
   {
+    id: 'silencio',
+    title: 'O Silêncio',
+    lines: () => [
+      'Você pode encerrar o turno na aba Silêncio.',
+      'A economia recomeça do zero, mas você ganha Clareza: +2% de dados por ponto, para sempre, e pontos para gastar na árvore.',
+      'O Diário e as fontes do Espectro ficam.',
+    ],
+    when: (g) => g.isSilenceUnlocked(),
+    target: '[data-tab="silence"]',
+  },
+  {
     id: 'offline',
     title: 'Fora da estação',
     lines: (g) => [
@@ -166,6 +177,10 @@ export const GLOSSARY: readonly { title: string; text: string }[] = [
   {
     title: 'Espectro',
     text: 'Varreduras levam tempo real e podem achar fontes. Naturais dão bônus de sinal permanente; artificiais liberam transmissões.',
+  },
+  {
+    title: 'Silêncio (prestígio)',
+    text: 'Depois do Arco 2 você pode encerrar o turno. Tudo da economia recomeça, mas você ganha Clareza (+2% de dados por ponto, para sempre) e pontos para a árvore. Diário e fontes ficam.',
   },
   {
     title: 'Offline',

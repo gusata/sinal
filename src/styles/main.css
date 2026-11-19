@@ -101,9 +101,7 @@ button {
 /* ─── Osciloscópio ───────────────────────────────────────── */
 .scope {
   position: relative;
-  flex: 0 0 30vh;
-  min-height: 150px;
-  max-height: 280px;
+  flex: 0 0 clamp(110px, 28vh, 280px);
   margin: 8px var(--gutter) 4px;
   border: 1px solid var(--fg-faint);
   border-radius: 6px;
@@ -809,4 +807,19 @@ body.crt #app {
   font-size: 13px;
   line-height: 1.55;
   color: var(--fg-dim);
+}
+
+/* ─── Silêncio ───────────────────────────────────────────── */
+.silence-gain {
+  margin: 8px 0 4px;
+  color: var(--fg-bright);
+}
+
+.card .btn.wide {
+  margin-top: 12px;
+}
+
+.btn:disabled:active {
+  background: none;
+  color: inherit;
 }

@@ -64,6 +64,13 @@ function sanitize(s: RawSave, now: number): GameState {
   const scan = obj(spectrum.scan);
   const last = obj(spectrum.last);
   const boost = obj(s.boost);
+  const prestige = obj(s.prestige);
+  const prestigeNodes: Record<string, number> = {};
+  for (const [id, level] of Object.entries(obj(prestige.nodes))) {
+    const n = Math.floor(num(level, 0));
+    if (n > 0) prestigeNodes[id] = n;
+  }
+  const bool = (v: unknown, fallback: boolean) => (typeof v === 'boolean' ? v : fallback);
 
   const antennas: Record<string, number> = {};
   for (const [id, count] of Object.entries(obj(s.antennas))) {
@@ -118,6 +125,13 @@ function sanitize(s: RawSave, now: number): GameState {
       unseen: spectrum.unseen === true,
     },
     tutorial: { done: strArray(obj(s.tutorial).done) },
+    prestige: {
+      clarity: Math.floor(num(prestige.clarity, 0)),
+      spent: Math.floor(num(prestige.spent, 0)),
+      silences: Math.floor(num(prestige.silences, 0)),
+      nodes: prestigeNodes,
+      operators: strArray(prestige.operators),
+    },
     stats: {
       taps: Math.floor(num(stats.taps, 0)),
       peaks: Math.floor(num(stats.peaks, 0)),
@@ -125,8 +139,11 @@ function sanitize(s: RawSave, now: number): GameState {
       playTime: num(stats.playTime, 0),
     },
     settings: {
-      haptics: typeof settings.haptics === 'boolean' ? settings.haptics : base.settings.haptics,
-      crt: typeof settings.crt === 'boolean' ? settings.crt : base.settings.crt,
+      haptics: bool(settings.haptics, base.settings.haptics),
+      crt: bool(settings.crt, base.settings.crt),
+      sound: bool(settings.sound, base.settings.sound),
+      ambient: bool(settings.ambient, base.settings.ambient),
+      notifications: bool(settings.notifications, base.settings.notifications),
       buyMode,
     },
     lastSeen: num(s.lastSeen, now),

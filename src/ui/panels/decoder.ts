@@ -2,7 +2,6 @@ import type { Game } from '../../core/game';
 import { formatBytes, formatHz } from '../../core/format';
 import {
   DECODER_UPGRADES,
-  bytesPerSignal,
   decoderCapacity,
   decoderTechName,
   type DecoderUpgrade,
@@ -167,7 +166,7 @@ function createUpgradeRow(game: Game, kind: DecoderUpgrade, onBuy: () => void) {
         meta,
         (kind === 'capacity'
           ? `${formatHz(decoderCapacity(lvl))} → ${formatHz(decoderCapacity(lvl + 1))}`
-          : `1 Hz: ${formatBytes(bytesPerSignal(lvl))} → ${formatBytes(bytesPerSignal(lvl + 1))}`) +
+          : `1 Hz: ${formatBytes(game.bytesPerPulse(lvl))} → ${formatBytes(game.bytesPerPulse(lvl + 1))}`) +
           ` · +${formatBytes(gain)}/s agora` +
           (kind === 'capacity' && gain === 0 ? ' (sobra capacidade)' : ''),
       );

@@ -126,6 +126,16 @@ export const SOURCES: readonly SourceDef[] = [
     requires: [],
     lines: ['O ruído do primeiro dia de tudo.', 'Estava aqui desde o começo, atrás de todo o resto.'],
   },
+  {
+    id: 'sagitario',
+    name: 'Sagitário A*',
+    kind: 'natural',
+    freq: '230.00 GHz',
+    depth: 3,
+    signalBonus: 0.4,
+    requires: [{ kind: 'story', id: 'd05-ultima-pagina' }],
+    lines: ['O centro da galáxia. Um buraco negro que engole tudo, menos o próprio ruído.'],
+  },
   // ─── Artificiais (liberam transmissões) ───
   {
     id: 'satelite',
@@ -156,6 +166,16 @@ export const SOURCES: readonly SourceDef[] = [
     signalBonus: 0,
     requires: [{ kind: 'story', id: 't05-intervalo' }],
     lines: ['Um sinal que parece sair daqui mesmo.', 'E voltar.'],
+  },
+  {
+    id: 'harmonico',
+    name: 'Harmônico do Coro',
+    kind: 'artificial',
+    freq: '1420.41 MHz × 4',
+    depth: 1,
+    signalBonus: 0,
+    requires: [{ kind: 'story', id: 't08-cinco-notas' }],
+    lines: ['A mesma nota do hidrogênio, multiplicada por quatro.', 'Quatro vozes. Uma nota.'],
   },
 ];
 
