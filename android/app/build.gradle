@@ -7,8 +7,9 @@ android {
         applicationId "com.sinal.idle"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // No CI: versionCode = número do build, para cada APK novo instalar por cima do anterior.
+        versionCode((System.getenv("SINAL_VERSION_CODE") ?: "1").toInteger())
+        versionName(System.getenv("SINAL_VERSION_NAME") ?: "1.0")
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,7 +17,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Assinatura fixa vinda de variáveis de ambiente (Secrets no GitHub Actions).
+    // Sem as variáveis, usa a chave de debug padrão da máquina (build local de sempre).
+    def keystorePath = System.getenv("SINAL_KEYSTORE_PATH")
+    signingConfigs {
+        if (keystorePath) {
+            sinal {
+                storeFile file(keystorePath)
+                storePassword System.getenv("SINAL_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("SINAL_KEY_ALIAS")
+                keyPassword System.getenv("SINAL_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
+        debug {
+            if (keystorePath) signingConfig signingConfigs.sinal
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

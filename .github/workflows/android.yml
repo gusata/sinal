@@ -1,0 +1,134 @@
+# Build do APK Android.
+#
+# - Todo push na main (e todo PR): roda os testes e gera o APK.
+#   Baixe em: aba Actions → execução → "Artifacts" (fica guardado 30 dias).
+# - Tag "v*" (ex.: git tag v0.2.0 && git push --tags): também cria uma Release
+#   com o APK anexado (fica para sempre, na aba Releases).
+# - Também dá para rodar manualmente: Actions → "Android APK" → "Run workflow".
+#
+# Assinatura: chave fixa vinda dos Secrets do repositório, para que cada APK novo
+# instale POR CIMA do anterior (mesma chave) sem perder o save.
+#   SINAL_KEYSTORE_BASE64, SINAL_KEYSTORE_PASSWORD, SINAL_KEY_ALIAS, SINAL_KEY_PASSWORD
+
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore: ['docs/**', '**.md']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Testes + APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      apk-name: ${{ steps.meta.outputs.apk-name }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Checagem de tipos
+        run: npm run typecheck
+
+      - name: Testes
+        run: npm test
+
+      - name: Build web
+        run: npm run build
+
+      - name: Sincronizar Capacitor (Android)
+        run: npx cap sync android
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Versão
+        id: meta
+        run: |
+          base=$(node -p "require('./package.json').version")
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            name="${GITHUB_REF_NAME#v}"
+          else
+            name="${base}-build.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "SINAL_VERSION_NAME=$name" >> "$GITHUB_ENV"
+          echo "SINAL_VERSION_CODE=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+          echo "apk-name=sinal-${name}.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Preparar chave de assinatura
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SINAL_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::Secrets de assinatura ausentes: o APK sai com chave de debug aleatória e NÃO vai instalar por cima de versões anteriores."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sinal.jks"
+          echo "SINAL_KEYSTORE_PATH=$RUNNER_TEMP/sinal.jks" >> "$GITHUB_ENV"
+
+      - name: Build do APK
+        working-directory: android
+        env:
+          SINAL_KEYSTORE_PASSWORD: ${{ secrets.SINAL_KEYSTORE_PASSWORD }}
+          SINAL_KEY_ALIAS: ${{ secrets.SINAL_KEY_ALIAS }}
+          SINAL_KEY_PASSWORD: ${{ secrets.SINAL_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --console=plain
+          mv app/build/outputs/apk/debug/app-debug.apk "../${{ steps.meta.outputs.apk-name }}"
+
+      - name: Apagar chave
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sinal.jks"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.meta.outputs.apk-name }}
+          path: ${{ steps.meta.outputs.apk-name }}
+          retention-days: 30
+          if-no-files-found: error
+
+  release:
+    name: Release (tags v*)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build.outputs.apk-name }}
+
+      - name: Criar Release com o APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "${{ needs.build.outputs.apk-name }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Sinal $GITHUB_REF_NAME" \
+            --generate-notes
